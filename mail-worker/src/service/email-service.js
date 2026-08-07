@@ -322,12 +322,12 @@ const emailService = {
 		emailData.resendEmailId = data?.id;
 		// messageId 内嵌 trackId：站内已读回写 + 外发打开像素共用
 		emailData.messageId = messageId;
-		// 发件记录写入主收件人；回复时带上对方显示名
+		// 发件记录写入主收件人；尽量带上对方显示名
 		emailData.toEmail = receiveEmail[0] || '';
 		emailData.toName = '';
 
 		const recipient = [];
-		receiveEmail.forEach(item => {
+		for (const item of receiveEmail) {
 			let personName = '';
 			if (sendType === 'reply' && emailRow?.sendEmail && item === emailRow.sendEmail) {
 				const n = (emailRow.name || '').trim();
@@ -335,8 +335,11 @@ const emailService = {
 					personName = n;
 				}
 			}
+			if (!personName) {
+				personName = await this.resolveContactName(c, userId, item);
+			}
 			recipient.push({ address: item, name: personName });
-		});
+		}
 
 		emailData.recipient = JSON.stringify(recipient);
 		emailData.toName = recipient[0]?.name || '';
@@ -674,6 +677,40 @@ const emailService = {
 
 		await orm(c).update(email).set({ status, message: message }).where(eq(email.emailId, sendEmailData.emailId)).run();
 
+	},
+
+	/** 从历史往来推断联系人显示名 */
+	async resolveContactName(c, userId, address) {
+		if (!address) return '';
+
+		const addr = String(address).trim();
+		// 1) 最近一封来自该地址的收件（对方显示名）
+		const received = await orm(c).select({ name: email.name }).from(email).where(and(
+			eq(email.userId, userId),
+			eq(email.type, emailConst.type.RECEIVE),
+			sql`LOWER(${email.sendEmail}) = ${addr.toLowerCase()}`,
+			ne(email.name, ''),
+			ne(email.name, addr)
+		)).orderBy(desc(email.emailId)).limit(1).get();
+
+		if (received?.name && !String(received.name).includes('@')) {
+			return received.name.trim();
+		}
+
+		// 2) 最近一封发给该地址且已有 toName 的发件
+		const sent = await orm(c).select({ toName: email.toName }).from(email).where(and(
+			eq(email.userId, userId),
+			eq(email.type, emailConst.type.SEND),
+			sql`LOWER(${email.toEmail}) = ${addr.toLowerCase()}`,
+			ne(email.toName, ''),
+			ne(email.toName, addr)
+		)).orderBy(desc(email.emailId)).limit(1).get();
+
+		if (sent?.toName && !String(sent.toName).includes('@')) {
+			return sent.toName.trim();
+		}
+
+		return '';
 	},
 
 	/** 外发 HTML 植入 1x1 打开追踪像素；纯文本也会包一层 HTML */

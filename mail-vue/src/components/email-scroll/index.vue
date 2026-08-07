@@ -595,15 +595,53 @@ function isUsefulDisplayName(name, emailAddr) {
   return true
 }
 
-/** 发件人显示名：有名称用名称，否则用发件邮箱 */
+function normalizeEmailAddr(addr) {
+  return String(addr || '').trim().toLowerCase()
+}
+
+/**
+ * 从当前已加载列表推断「邮箱 → 显示名」
+ * 解决：新发件未存 toName，但历史往来已有对方名称
+ */
+const contactNameMap = computed(() => {
+  const map = new Map()
+  const remember = (addr, name) => {
+    const key = normalizeEmailAddr(addr)
+    if (!key || !isUsefulDisplayName(name, key) || map.has(key)) return
+    map.set(key, name.trim())
+  }
+
+  for (const row of emailList) {
+    // 收件：对方是发件人
+    if (Number(row.type) === 0) {
+      remember(row.sendEmail, row.name)
+    }
+    // 发件：对方是收件人
+    if (Number(row.type) === 1) {
+      remember(row.toEmail, row.toName)
+      for (const item of parseRecipientList(row)) {
+        remember(item?.address || item, item?.name)
+      }
+    }
+  }
+  return map
+})
+
+function lookupContactName(addr) {
+  return contactNameMap.value.get(normalizeEmailAddr(addr)) || ''
+}
+
+/** 发件人显示名：有名称用名称，否则用通讯录推断，再否则用发件邮箱 */
 function formatSenderDisplayName(email) {
   if (isUsefulDisplayName(email?.name, email?.sendEmail)) {
     return email.name.trim()
   }
+  const known = lookupContactName(email?.sendEmail)
+  if (known) return known
   return email?.sendEmail || ''
 }
 
-/** 收件人显示名：有名称用名称，否则用收件邮箱 */
+/** 收件人显示名：有名称用名称，否则用通讯录推断，再否则用收件邮箱 */
 function formatRecipientDisplayName(email) {
   if (isUsefulDisplayName(email?.toName, email?.toEmail)) {
     return email.toName.trim()
@@ -611,19 +649,18 @@ function formatRecipientDisplayName(email) {
 
   const list = parseRecipientList(email)
   if (list.length) {
-    const named = list
-      .map(item => {
-        const addr = item?.address || item
-        const n = (item?.name || '').trim()
-        return isUsefulDisplayName(n, addr) ? n : ''
-      })
-      .filter(Boolean)
-    if (named.length) return named.join(', ')
+    const resolved = list.map(item => {
+      const addr = item?.address || item
+      const n = (item?.name || '').trim()
+      if (isUsefulDisplayName(n, addr)) return n
+      return lookupContactName(addr) || addr || ''
+    }).filter(Boolean)
 
-    const addresses = list.map(item => item?.address || item).filter(Boolean)
-    if (addresses.length) return addresses.join(', ')
+    if (resolved.length) return resolved.join(', ')
   }
 
+  const known = lookupContactName(email?.toEmail)
+  if (known) return known
   return email?.toEmail || ''
 }
 
