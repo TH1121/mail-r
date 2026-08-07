@@ -102,13 +102,13 @@
                       <span>
                         <Icon icon="mdi:email-arrow-right-outline" width="20" height="20"/>
                       </span>
-                      <span>{{ item.sendEmail }}</span>
+                      <span>{{ formatSenderDisplayName(item) }}</span>
                     </div>
                     <div class="recipient" :title="t('toEmail')">
                       <span>
                         <Icon icon="mdi:email-arrow-left-outline" width="20" height="20"/>
                       </span>
-                      <span>{{ formatListRecipient(item) }}</span>
+                      <span>{{ formatRecipientDisplayName(item) }}</span>
                     </div>
                   </div>
                 </div>
@@ -557,7 +557,7 @@ const accountShow = computed(() => {
   return uiStore.accountShow && settingStore.settings.manyEmail === 0
 })
 
-/** 全部邮件列表：解析收件人（优先 recipient JSON，其次 toEmail） */
+/** 全部邮件列表：解析收件地址（搜索等场景仍可能用到） */
 function formatListRecipient(email) {
   if (!email) return ''
   try {
@@ -585,22 +585,41 @@ function parseRecipientList(email) {
   }
 }
 
+/** 名称无效时（空 / 与邮箱相同 / 本身是邮箱）视为无名称 */
+function isUsefulDisplayName(name, emailAddr) {
+  const n = (name || '').trim()
+  if (!n) return false
+  const addr = (emailAddr || '').trim().toLowerCase()
+  if (addr && n.toLowerCase() === addr) return false
+  if (n.includes('@') && n.includes('.')) return false
+  return true
+}
+
 /** 发件人显示名：有名称用名称，否则用发件邮箱 */
 function formatSenderDisplayName(email) {
-  const name = (email?.name || '').trim()
-  if (name) return name
+  if (isUsefulDisplayName(email?.name, email?.sendEmail)) {
+    return email.name.trim()
+  }
   return email?.sendEmail || ''
 }
 
 /** 收件人显示名：有名称用名称，否则用收件邮箱 */
 function formatRecipientDisplayName(email) {
-  const toName = (email?.toName || '').trim()
-  if (toName) return toName
+  if (isUsefulDisplayName(email?.toName, email?.toEmail)) {
+    return email.toName.trim()
+  }
 
   const list = parseRecipientList(email)
   if (list.length) {
-    const named = list.map(item => (item?.name || '').trim()).filter(Boolean)
+    const named = list
+      .map(item => {
+        const addr = item?.address || item
+        const n = (item?.name || '').trim()
+        return isUsefulDisplayName(n, addr) ? n : ''
+      })
+      .filter(Boolean)
     if (named.length) return named.join(', ')
+
     const addresses = list.map(item => item?.address || item).filter(Boolean)
     if (addresses.length) return addresses.join(', ')
   }

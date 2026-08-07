@@ -322,17 +322,24 @@ const emailService = {
 		emailData.resendEmailId = data?.id;
 		// messageId 内嵌 trackId：站内已读回写 + 外发打开像素共用
 		emailData.messageId = messageId;
-		// 发件记录写入主收件人地址；名称仅在有真实显示名时填写
+		// 发件记录写入主收件人；回复时带上对方显示名
 		emailData.toEmail = receiveEmail[0] || '';
 		emailData.toName = '';
 
 		const recipient = [];
-
 		receiveEmail.forEach(item => {
-			recipient.push({ address: item, name: '' });
+			let personName = '';
+			if (sendType === 'reply' && emailRow?.sendEmail && item === emailRow.sendEmail) {
+				const n = (emailRow.name || '').trim();
+				if (n && n.toLowerCase() !== String(item).toLowerCase() && !(n.includes('@') && n.includes('.'))) {
+					personName = n;
+				}
+			}
+			recipient.push({ address: item, name: personName });
 		});
 
 		emailData.recipient = JSON.stringify(recipient);
+		emailData.toName = recipient[0]?.name || '';
 
 		if (sendType === 'reply') {
 			emailData.inReplyTo = emailRow.messageId;
