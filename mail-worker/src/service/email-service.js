@@ -322,6 +322,9 @@ const emailService = {
 		emailData.resendEmailId = data?.id;
 		// messageId 内嵌 trackId：站内已读回写 + 外发打开像素共用
 		emailData.messageId = messageId;
+		// 发件记录写入主收件人地址；名称仅在有真实显示名时填写
+		emailData.toEmail = receiveEmail[0] || '';
+		emailData.toName = '';
 
 		const recipient = [];
 

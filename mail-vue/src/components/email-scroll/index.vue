@@ -70,7 +70,7 @@
                   <span class="name">
                     <span>
                       <div class="unread" v-if="isMobile && (item.unread === EmailUnreadEnum.UNREAD && showUnread) "/>
-                      <slot name="name" :email="item"> {{ item.name }}</slot>
+                      <slot name="name" :email="item"> {{ formatListDisplayName(item) }}</slot>
                     </span>
                     <span>
                       <Icon v-if="item.isStar" icon="fluent-color:star-16" width="18" height="18"/>
@@ -92,17 +92,23 @@
                     <span class="email-content">{{ item.formatText || '\u200B' }}</span>
                   </div>
                   <div class="user-info" v-if="showUserInfo">
-                    <div class="user">
+                    <div class="user" :title="t('userEmail')">
                       <span>
                         <Icon icon="mynaui:user" width="20" height="20"/>
                       </span>
                       <span>{{ item.userEmail }}</span>
                     </div>
-                    <div class="account">
+                    <div class="account" :title="t('sendEmailAddress')">
                       <span>
-                        <Icon icon="mdi-light:email" width="20" height="20"/>
+                        <Icon icon="mdi:email-arrow-right-outline" width="20" height="20"/>
                       </span>
-                      <span>{{ item.type === 0 ? item.toEmail : item.sendEmail }}</span>
+                      <span>{{ item.sendEmail }}</span>
+                    </div>
+                    <div class="recipient" :title="t('toEmail')">
+                      <span>
+                        <Icon icon="mdi:email-arrow-left-outline" width="20" height="20"/>
+                      </span>
+                      <span>{{ formatListRecipient(item) }}</span>
                     </div>
                   </div>
                 </div>
@@ -203,7 +209,7 @@
               </div>
             </template>
           </el-dropdown-item>
-          <el-dropdown-item v-if="props.type === 'all-email' " @click="handleSearch('account', rightClickEmail.toEmail)">
+          <el-dropdown-item v-if="props.type === 'all-email' " @click="handleSearch('account', rightClickEmail.toEmail || formatListRecipient(rightClickEmail) || rightClickEmail.sendEmail)">
             <template #default>
               <div class="right-dropdown-item">
                 <Icon icon="iconoir:search" width="20" height="20" />
@@ -550,6 +556,79 @@ function getSkeletonRows() {
 const accountShow = computed(() => {
   return uiStore.accountShow && settingStore.settings.manyEmail === 0
 })
+
+/** 全部邮件列表：解析收件人（优先 recipient JSON，其次 toEmail） */
+function formatListRecipient(email) {
+  if (!email) return ''
+  try {
+    const list = typeof email.recipient === 'string'
+      ? JSON.parse(email.recipient || '[]')
+      : (email.recipient || [])
+    if (Array.isArray(list) && list.length) {
+      const addresses = list.map(item => item?.address || item).filter(Boolean)
+      if (addresses.length) return addresses.join(', ')
+    }
+  } catch (e) {
+    // ignore
+  }
+  return email.toEmail || ''
+}
+
+function parseRecipientList(email) {
+  try {
+    const list = typeof email.recipient === 'string'
+      ? JSON.parse(email.recipient || '[]')
+      : (email.recipient || [])
+    return Array.isArray(list) ? list : []
+  } catch (e) {
+    return []
+  }
+}
+
+/** 发件人显示名：有名称用名称，否则用发件邮箱 */
+function formatSenderDisplayName(email) {
+  const name = (email?.name || '').trim()
+  if (name) return name
+  return email?.sendEmail || ''
+}
+
+/** 收件人显示名：有名称用名称，否则用收件邮箱 */
+function formatRecipientDisplayName(email) {
+  const toName = (email?.toName || '').trim()
+  if (toName) return toName
+
+  const list = parseRecipientList(email)
+  if (list.length) {
+    const named = list.map(item => (item?.name || '').trim()).filter(Boolean)
+    if (named.length) return named.join(', ')
+    const addresses = list.map(item => item?.address || item).filter(Boolean)
+    if (addresses.length) return addresses.join(', ')
+  }
+
+  return email?.toEmail || ''
+}
+
+/**
+ * 列表左侧名称：
+ * - 已发送 / 发件记录 → 收件人
+ * - 收件箱 / 收件记录 → 发件人
+ * - 无名称则回退邮箱地址
+ */
+function formatListDisplayName(email) {
+  if (!email) return ''
+
+  let showAsSend = false
+  if (props.type === 'send') {
+    showAsSend = true
+  } else if (props.type === 'email') {
+    showAsSend = false
+  } else {
+    // all-email、star 等按邮件类型
+    showAsSend = Number(email.type) === 1
+  }
+
+  return showAsSend ? formatRecipientDisplayName(email) : formatSenderDisplayName(email)
+}
 
 function htmlToText(email) {
   if (email.content) {
@@ -1001,15 +1080,16 @@ function loadData() {
     user-select: none;
   }
   &.all-email {
-    height: 65px;
+    height: 78px;
     @media (max-width: 1366px) {
-      height: 132px;
+      height: 148px;
     }
   }
   .user-info {
     display: flex;
     flex-wrap: wrap;
     column-gap: 10px;
+    row-gap: 4px;
     margin-top: 5px;
     margin-bottom: 2px;
     color: var(--email-scroll-content-color);
@@ -1017,7 +1097,7 @@ function loadData() {
       flex-direction: column;
     }
 
-    .user, .account {
+    .user, .account, .recipient {
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;

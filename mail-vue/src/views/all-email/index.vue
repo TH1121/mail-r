@@ -11,7 +11,7 @@
                  actionLeft="4px"
                  :show-account-icon="false"
                  :time-sort="params.timeSort"
-                 :item-height="65"
+                 :item-height="78"
                  @jump="jumpContent"
                  @refresh-before="refreshBefore"
                  @right-search="rightSearch"
