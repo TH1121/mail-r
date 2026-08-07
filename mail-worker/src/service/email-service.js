@@ -1194,6 +1194,23 @@ const emailService = {
 			return;
 		}
 
+		const unreadValue = Number(params.unread) === emailConst.unread.UNREAD
+			? emailConst.unread.UNREAD
+			: emailConst.unread.READ;
+
+		const userRow = await userService.selectById(c, userId);
+		const isAdmin = userRow?.email && userRow.email === c.env.admin;
+		const idCondition = isAdmin
+			? inArray(email.emailId, emailIds)
+			: and(eq(email.userId, userId), inArray(email.emailId, emailIds));
+
+		await orm(c).update(email).set({ unread: unreadValue }).where(idCondition).run();
+
+		// 标为未读时不回写发件「对方已查阅」
+		if (unreadValue === emailConst.unread.UNREAD) {
+			return;
+		}
+
 		// 站内信：收件人打开后，把对应发件记录标为「对方已查阅」
 		const receiveRows = await orm(c).select({
 			messageId: email.messageId,
@@ -1205,8 +1222,6 @@ const emailService = {
 			inArray(email.emailId, emailIds),
 			eq(email.type, emailConst.type.RECEIVE)
 		)).all();
-
-		await orm(c).update(email).set({ unread: emailConst.unread.READ }).where(and(eq(email.userId, userId), inArray(email.emailId, emailIds)));
 
 		if (!receiveRows.length) {
 			return;

@@ -3,6 +3,7 @@
     <emailScroll ref="sysEmailScroll"
                  :get-emailList="getEmailList"
                  :email-delete="allEmailDelete"
+                 :email-read="emailRead"
                  :star-add="starAdd"
                  :star-cancel="starCancel"
                  :show-star="false"
@@ -98,6 +99,7 @@ import {
   allEmailBatchDelete,
   allEmailLatest
 } from "@/request/all-email.js";
+import {emailRead} from "@/request/email.js";
 import {Icon} from "@iconify/vue";
 import router from "@/router/index.js";
 import {useI18n} from 'vue-i18n';

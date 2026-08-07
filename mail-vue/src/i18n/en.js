@@ -328,6 +328,7 @@ const en = {
     details: 'Details',
     userDetails: 'User Details',
     markAsRead: 'Mark as Read',
+    markAsUnread: 'Mark as Unread',
     star: 'Star',
     setRole: 'Set Role',
     adminDeleteUser: 'Delete User',

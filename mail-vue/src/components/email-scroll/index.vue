@@ -114,6 +114,22 @@
                 </div>
               </div>
               <div class="email-right" :style="showUserInfo ? 'align-self: start;':''">
+                <div class="row-actions" @click.stop v-if="showRowActions">
+                  <el-tooltip effect="dark" :content="item.unread === EmailUnreadEnum.UNREAD ? t('markAsRead') : t('markAsUnread')">
+                    <span class="row-action-btn" @click="toggleRead(item)">
+                      <Icon
+                          :icon="item.unread === EmailUnreadEnum.UNREAD ? 'fluent:mail-read-20-regular' : 'fluent:mail-20-regular'"
+                          width="20"
+                          height="20"
+                      />
+                    </span>
+                  </el-tooltip>
+                  <el-tooltip effect="dark" :content="t('delete')">
+                    <span class="row-action-btn" v-perm="'email:delete'" @click="rightDelete(item.emailId)">
+                      <Icon icon="uiw:delete" width="16" height="16"/>
+                    </span>
+                  </el-tooltip>
+                </div>
                 <span class="email-time" :style="(item.unread === EmailUnreadEnum.UNREAD && showUnread) ? 'font-weight: bold' : ''">{{ item.formatCreateTime }}</span>
               </div>
             </div>
@@ -169,11 +185,11 @@
               </div>
             </template>
           </el-dropdown-item>
-          <el-dropdown-item v-if="['email'].includes(props.type)" @click="emailRead(rightClickEmail.emailId)" >
+          <el-dropdown-item v-if="['email','send','all-email'].includes(props.type)" @click="toggleRead(rightClickEmail)" >
             <template #default>
               <div class="right-dropdown-item">
-                <Icon icon="fluent:mail-read-20-regular" width="20" height="20" />
-                <span>{{t('markAsRead')}}</span>
+                <Icon :icon="rightClickEmail.unread === EmailUnreadEnum.UNREAD ? 'fluent:mail-read-20-regular' : 'fluent:mail-20-regular'" width="20" height="20" />
+                <span>{{ rightClickEmail.unread === EmailUnreadEnum.UNREAD ? t('markAsRead') : t('markAsUnread') }}</span>
               </div>
             </template>
           </el-dropdown-item>
@@ -557,6 +573,10 @@ const accountShow = computed(() => {
   return uiStore.accountShow && settingStore.settings.manyEmail === 0
 })
 
+const showRowActions = computed(() => {
+  return ['email', 'send', 'all-email'].includes(props.type)
+})
+
 /** 全部邮件列表：解析收件地址（搜索等场景仍可能用到） */
 function formatListRecipient(email) {
   if (!email) return ''
@@ -750,23 +770,34 @@ function changeAccountShow() {
 
 const handleRead = () => {
   const emailIds = getSelectedMailsIds();
-  props.emailRead(emailIds);
-  localRead(emailIds);
+  setReadState(emailIds, EmailUnreadEnum.READ);
 }
 
 function emailRead(emailId) {
-  props.emailRead([emailId])
-  localRead([emailId]);
+  setReadState([emailId], EmailUnreadEnum.READ);
 }
 
-function localRead(emailIds) {
+function toggleRead(item) {
+  const next = item.unread === EmailUnreadEnum.UNREAD
+      ? EmailUnreadEnum.READ
+      : EmailUnreadEnum.UNREAD
+  setReadState([item.emailId], next)
+}
+
+function setReadState(emailIds, unread) {
+  if (!props.emailRead || !emailIds?.length) return
+  props.emailRead(emailIds, unread)
   emailIds.forEach(emailId => {
     const index = emailList.findIndex(email => email.emailId === emailId);
     if (index > -1) {
-      emailList[index].unread = EmailUnreadEnum.READ;
+      emailList[index].unread = unread;
       emailList[index].checked = false;
     }
   })
+}
+
+function localRead(emailIds) {
+  setReadState(emailIds, EmailUnreadEnum.READ)
 }
 
 function rightDelete(emailId) {
@@ -1358,8 +1389,33 @@ function loadData() {
     display: flex;
     padding-left: 15px;
     align-items: center;
+    justify-content: flex-end;
+    min-width: 88px;
+    gap: 8px;
     @media (max-width: 1366px) {
       display: none;
+    }
+
+    .row-actions {
+      display: none;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .row-action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      color: var(--el-text-color-regular);
+      cursor: pointer;
+
+      &:hover {
+        background: var(--el-fill-color-light);
+        color: var(--el-color-primary);
+      }
     }
   }
 
@@ -1372,6 +1428,14 @@ function loadData() {
   &:hover {
     background-color: var(--email-hover-background);
     z-index: 0;
+
+    .row-actions {
+      display: flex;
+    }
+
+    .email-time {
+      display: none;
+    }
   }
 
   /*&[data-checked="true"] {
