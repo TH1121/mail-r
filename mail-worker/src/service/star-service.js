@@ -73,6 +73,8 @@ const starService = {
 			emailRow.attList = atts;
 		});
 
+		await emailService.enrichSendDisplayNames(c, userId, list, null);
+
 		return { list };
 	},
 	async removeByEmailIds(c, emailIds) {

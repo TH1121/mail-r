@@ -120,8 +120,8 @@ const emailService = {
 			isStar: item.starId != null ? 1 : 0
 		}));
 
-
 		await this.emailAddAtt(c, list);
+		await this.enrichSendDisplayNames(c, userId, list, type);
 
 		if (!latestEmail) {
 			latestEmail = {
@@ -679,35 +679,138 @@ const emailService = {
 
 	},
 
+	/** 名称是否可用（非空、非邮箱本身） */
+	isUsefulDisplayName(name, emailAddr) {
+		const n = String(name || '').trim();
+		if (!n) return false;
+		const addr = String(emailAddr || '').trim().toLowerCase();
+		if (addr && n.toLowerCase() === addr) return false;
+		if (n.includes('@') && n.includes('.')) return false;
+		return true;
+	},
+
+	parseRecipientList(recipient) {
+		try {
+			const list = typeof recipient === 'string' ? JSON.parse(recipient || '[]') : (recipient || []);
+			return Array.isArray(list) ? list : [];
+		} catch (e) {
+			return [];
+		}
+	},
+
+	/**
+	 * 已发送列表补全收件人显示名（列表里没有收件邮件，前端无法推断）
+	 * 并回写 toName，避免每次重复查询
+	 */
+	async enrichSendDisplayNames(c, userId, list, type) {
+		if (!list?.length) return list;
+
+		const isSendList = Number(type) === emailConst.type.SEND;
+		const nameCache = new Map();
+
+		for (const item of list) {
+			const itemType = item.type != null ? Number(item.type) : Number(type);
+			if (itemType !== emailConst.type.SEND && !isSendList) {
+				continue;
+			}
+
+			if (this.isUsefulDisplayName(item.toName, item.toEmail)) {
+				continue;
+			}
+
+			const recipients = this.parseRecipientList(item.recipient);
+			const namedFromRecipient = recipients
+				.map(row => {
+					const addr = row?.address || row;
+					const n = row?.name || '';
+					return this.isUsefulDisplayName(n, addr) ? String(n).trim() : '';
+				})
+				.filter(Boolean);
+
+			if (namedFromRecipient.length) {
+				item.toName = namedFromRecipient.join(', ');
+				continue;
+			}
+
+			const addr = item.toEmail || recipients[0]?.address || recipients[0];
+			if (!addr) continue;
+
+			const cacheKey = String(addr).trim().toLowerCase();
+			let personName = nameCache.get(cacheKey);
+			if (personName === undefined) {
+				personName = await this.resolveContactName(c, userId || item.userId, addr);
+				nameCache.set(cacheKey, personName || '');
+			}
+
+			if (!personName) continue;
+
+			item.toName = personName;
+
+			if (recipients.length) {
+				item.recipient = JSON.stringify(recipients.map(row => {
+					const a = row?.address || row;
+					if (String(a).toLowerCase() !== cacheKey) {
+						return typeof row === 'string' ? { address: row, name: '' } : row;
+					}
+					return { address: a, name: personName };
+				}));
+			}
+
+			// 回写数据库，已发送列表下次直接有名称
+			if (item.emailId) {
+				await orm(c).update(email).set({
+					toName: personName,
+					recipient: item.recipient || JSON.stringify([{ address: addr, name: personName }])
+				}).where(eq(email.emailId, item.emailId)).run();
+			}
+		}
+
+		return list;
+	},
+
 	/** 从历史往来推断联系人显示名 */
 	async resolveContactName(c, userId, address) {
-		if (!address) return '';
+		if (!address || !userId) return '';
 
 		const addr = String(address).trim();
+		const lower = addr.toLowerCase();
+
 		// 1) 最近一封来自该地址的收件（对方显示名）
 		const received = await orm(c).select({ name: email.name }).from(email).where(and(
 			eq(email.userId, userId),
 			eq(email.type, emailConst.type.RECEIVE),
-			sql`LOWER(${email.sendEmail}) = ${addr.toLowerCase()}`,
+			sql`${email.sendEmail} COLLATE NOCASE = ${addr}`,
 			ne(email.name, ''),
-			ne(email.name, addr)
+			sql`${email.name} COLLATE NOCASE != ${addr}`
 		)).orderBy(desc(email.emailId)).limit(1).get();
 
-		if (received?.name && !String(received.name).includes('@')) {
+		if (this.isUsefulDisplayName(received?.name, addr)) {
 			return received.name.trim();
 		}
 
 		// 2) 最近一封发给该地址且已有 toName 的发件
-		const sent = await orm(c).select({ toName: email.toName }).from(email).where(and(
+		const sent = await orm(c).select({ toName: email.toName, recipient: email.recipient }).from(email).where(and(
 			eq(email.userId, userId),
 			eq(email.type, emailConst.type.SEND),
-			sql`LOWER(${email.toEmail}) = ${addr.toLowerCase()}`,
-			ne(email.toName, ''),
-			ne(email.toName, addr)
+			or(
+				sql`${email.toEmail} COLLATE NOCASE = ${addr}`,
+				like(email.recipient, `%${addr}%`)
+			),
+			ne(email.toName, '')
 		)).orderBy(desc(email.emailId)).limit(1).get();
 
-		if (sent?.toName && !String(sent.toName).includes('@')) {
+		if (this.isUsefulDisplayName(sent?.toName, addr)) {
 			return sent.toName.trim();
+		}
+
+		if (sent?.recipient) {
+			const list = this.parseRecipientList(sent.recipient);
+			for (const row of list) {
+				const a = row?.address || row;
+				if (String(a).toLowerCase() === lower && this.isUsefulDisplayName(row?.name, a)) {
+					return String(row.name).trim();
+				}
+			}
 		}
 
 		return '';
@@ -970,6 +1073,7 @@ const emailService = {
 		let [list, totalRow, latestEmail] = await Promise.all([listQuery, totalQuery, latestEmailQuery]);
 
 		await this.emailAddAtt(c, list);
+		await this.enrichSendDisplayNames(c, null, list, type === 'send' ? emailConst.type.SEND : null);
 
 		if (!latestEmail) {
 			latestEmail = {
