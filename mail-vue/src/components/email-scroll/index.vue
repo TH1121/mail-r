@@ -1240,12 +1240,11 @@ function loadData() {
     flex: 1;
     display: grid;
     grid-template-columns: 240px 1fr;
-    @media (max-width: 1366px) {
-      padding-right: 15px;
-    }
+    min-width: 0;
     @media (max-width: 1366px) {
       grid-template-columns: 1fr;
       gap: 4px;
+      padding-right: 64px; /* 给悬停操作按钮留空 */
     }
 
     .email-sender {
@@ -1387,19 +1386,19 @@ function loadData() {
     font-size: 12px;
     white-space: nowrap;
     display: flex;
-    padding-left: 15px;
+    padding-left: 8px;
+    padding-right: 12px;
     align-items: center;
     justify-content: flex-end;
-    min-width: 88px;
+    flex-shrink: 0;
+    min-width: 72px;
     gap: 8px;
-    @media (max-width: 1366px) {
-      display: none;
-    }
+    z-index: 2;
 
     .row-actions {
       display: none;
       align-items: center;
-      gap: 4px;
+      gap: 2px;
     }
 
     .row-action-btn {
@@ -1415,6 +1414,21 @@ function loadData() {
       &:hover {
         background: var(--el-fill-color-light);
         color: var(--el-color-primary);
+      }
+    }
+
+    /* 窄窗口：右侧仍保留操作区，时间改用 phone-time */
+    @media (max-width: 1366px) {
+      position: absolute;
+      right: 0;
+      top: 6px;
+      min-width: 0;
+      padding-left: 0;
+      padding-right: 8px;
+      background: transparent;
+
+      .email-time {
+        display: none;
       }
     }
   }
@@ -1435,6 +1449,28 @@ function loadData() {
 
     .email-time {
       display: none;
+    }
+
+    .phone-time {
+      visibility: hidden;
+    }
+
+    .email-right {
+      @media (max-width: 1366px) {
+        background: var(--email-hover-background);
+        box-shadow: -16px 0 12px var(--email-hover-background);
+      }
+    }
+  }
+
+  /* 无悬停能力的设备（触屏）长按仍可用右键菜单；点击行不强制显示按钮 */
+  @media (hover: none) {
+    .row-actions {
+      display: none !important;
+    }
+
+    .phone-time {
+      visibility: visible !important;
     }
   }
 
