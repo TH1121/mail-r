@@ -259,9 +259,14 @@ const emailService = {
 		}
 
 		let sendResult = {};
+		const trackId = crypto.randomUUID();
+		const messageId = `<${trackId}@${domain}>`;
 
 		//存在站外邮箱时，如果配置了 Cloudflare Email Service 就优先使用，否则使用 Resend
 		if (!allInternal) {
+
+			// 外发植入打开追踪像素（不依赖 Resend Open tracking / Cloudflare 无打开事件）
+			const sendHtml = this.withOpenPixel(html, text, new URL(c.req.url).origin, trackId);
 
 			if (useCloudflareEmail) {
 				sendResult = await this.sendByCloudflareEmail(c, {
@@ -270,7 +275,7 @@ const emailService = {
 					receiveEmail,
 					subject,
 					text,
-					html,
+					html: sendHtml,
 					attachments: [...imageDataList, ...attachments],
 					sendType,
 					messageId: emailRow.messageId
@@ -282,7 +287,7 @@ const emailService = {
 					receiveEmail,
 					subject,
 					text,
-					html,
+					html: sendHtml,
 					attachments: [...imageDataList, ...attachments],
 					sendType,
 					messageId: emailRow.messageId
@@ -315,6 +320,8 @@ const emailService = {
 		emailData.type = emailConst.type.SEND;
 		emailData.userId = userId;
 		emailData.resendEmailId = data?.id;
+		// messageId 内嵌 trackId：站内已读回写 + 外发打开像素共用
+		emailData.messageId = messageId;
 
 		const recipient = [];
 
@@ -547,6 +554,13 @@ const emailService = {
 
 		const { noRecipient  } = await settingService.query(c);
 
+		// 确保发件与站内收件副本共享 messageId，便于已读回执
+		if (!sendEmailData.messageId) {
+			const domain = emailUtils.getDomain(sendEmailData.sendEmail) || 'local';
+			sendEmailData.messageId = `<onsite-${sendEmailData.emailId}@${domain}>`;
+			await orm(c).update(email).set({ messageId: sendEmailData.messageId }).where(eq(email.emailId, sendEmailData.emailId)).run();
+		}
+
 		//查询所有收件人账号信息
 		let accountList = await orm(c).select().from(account).where(inArray(account.email, receiveEmail)).all();
 
@@ -650,6 +664,44 @@ const emailService = {
 
 		await orm(c).update(email).set({ status, message: message }).where(eq(email.emailId, sendEmailData.emailId)).run();
 
+	},
+
+	/** 外发 HTML 植入 1x1 打开追踪像素；纯文本也会包一层 HTML */
+	withOpenPixel(html, text, origin, trackId) {
+		let body = (html || '').trim();
+		if (!body) {
+			const safeText = (text || '')
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;');
+			body = `<div style="font-family:sans-serif;white-space:pre-wrap;word-break:break-word;">${safeText}</div>`;
+		}
+
+		const pixelUrl = `${origin.replace(/\/$/, '')}/open/${trackId}.gif`;
+		const pixel = `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0;overflow:hidden;" />`;
+
+		if (/<\/body>/i.test(body)) {
+			return body.replace(/<\/body>/i, `${pixel}</body>`);
+		}
+		return `${body}${pixel}`;
+	},
+
+	async markOpenedByTrackId(c, trackId) {
+		if (!trackId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trackId)) {
+			return;
+		}
+
+		const openableStatuses = [
+			emailConst.status.SENT,
+			emailConst.status.DELIVERED,
+			emailConst.status.DELAYED
+		];
+
+		await orm(c).update(email).set({ status: emailConst.status.OPENED }).where(and(
+			eq(email.type, emailConst.type.SEND),
+			like(email.messageId, `<${trackId}@%`),
+			inArray(email.status, openableStatuses)
+		)).run();
 	},
 
 	imgReplace(content, cidAttList, r2domain) {
@@ -987,7 +1039,58 @@ const emailService = {
 
 	async read(c, params, userId) {
 		const { emailIds } = params;
+		if (!emailIds?.length) {
+			return;
+		}
+
+		// 站内信：收件人打开后，把对应发件记录标为「对方已查阅」
+		const receiveRows = await orm(c).select({
+			messageId: email.messageId,
+			sendEmail: email.sendEmail,
+			subject: email.subject,
+			content: email.content
+		}).from(email).where(and(
+			eq(email.userId, userId),
+			inArray(email.emailId, emailIds),
+			eq(email.type, emailConst.type.RECEIVE)
+		)).all();
+
 		await orm(c).update(email).set({ unread: emailConst.unread.READ }).where(and(eq(email.userId, userId), inArray(email.emailId, emailIds)));
+
+		if (!receiveRows.length) {
+			return;
+		}
+
+		const openableStatuses = [
+			emailConst.status.SENT,
+			emailConst.status.DELIVERED,
+			emailConst.status.DELAYED
+		];
+
+		const messageIds = [...new Set(receiveRows.map(row => row.messageId).filter(Boolean))];
+		if (messageIds.length) {
+			await orm(c).update(email).set({ status: emailConst.status.OPENED }).where(and(
+				eq(email.type, emailConst.type.SEND),
+				inArray(email.messageId, messageIds),
+				inArray(email.status, openableStatuses)
+			)).run();
+		}
+
+		// 兼容旧站内信（无 messageId）：按发件人+主题+正文匹配
+		for (const row of receiveRows.filter(item => !item.messageId)) {
+			const conditions = [
+				eq(email.type, emailConst.type.SEND),
+				eq(email.sendEmail, row.sendEmail),
+				inArray(email.status, openableStatuses)
+			];
+			if (row.subject != null) {
+				conditions.push(eq(email.subject, row.subject));
+			}
+			if (row.content != null) {
+				conditions.push(eq(email.content, row.content));
+			}
+			await orm(c).update(email).set({ status: emailConst.status.OPENED }).where(and(...conditions)).run();
+		}
 	}
 };
 

@@ -109,8 +109,11 @@ watch(() => accountStore.currentAccountId, () => {
 })
 
 onMounted(() => {
-  if (emailStore.contentData.showUnread && email.unread === EmailUnreadEnum.UNREAD) {
-    email.unread = EmailUnreadEnum.READ;
+  if (emailStore.contentData.showUnread) {
+    if (email.unread === EmailUnreadEnum.UNREAD) {
+      email.unread = EmailUnreadEnum.READ;
+    }
+    // 每次打开收件都请求：站内信可据此把发件标为「对方已查阅」
     emailRead([email.emailId]);
   }
 })

@@ -11,6 +11,12 @@ export default {
 
 		const url = new URL(req.url)
 
+		// 打开追踪像素走 Worker（勿落入前端 SPA）
+		if (url.pathname.startsWith('/open/')) {
+			req = new Request(url.toString(), req)
+			return app.fetch(req, env, ctx);
+		}
+
 		if (url.pathname.startsWith('/api/')) {
 			url.pathname = url.pathname.replace('/api', '')
 			req = new Request(url.toString(), req)
