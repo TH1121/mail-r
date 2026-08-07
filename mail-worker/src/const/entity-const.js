@@ -25,7 +25,10 @@ export const roleConst = {
 	},
 	sendType: {
 		COUNT: 'count',
-		DAY: 'day'
+		DAY: 'day',
+		UNLIMITED: 'unlimited',
+		INTERNAL: 'internal',
+		BAN: 'ban'
 	}
 }
 

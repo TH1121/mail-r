@@ -197,7 +197,7 @@ const emailService = {
 		}
 
 		//如果不是管理员，权限设置了发送次数
-		if (c.env.admin !== userRow.email && roleRow.sendCount) {
+		if (c.env.admin !== userRow.email && roleRow.sendCount && roleRow.sendType !== 'unlimited') {
 
 			if (userRow.sendCount >= roleRow.sendCount) {
 				if (roleRow.sendType === 'day') throw new BizError(t('daySendLimit'), 403);
@@ -337,7 +337,7 @@ const emailService = {
 		}
 
 		//如果权限有发送次数增加用户发送次数
-		if (roleRow.sendCount && roleRow.sendType !== 'internal') {
+		if (roleRow.sendCount && roleRow.sendType !== 'internal' && roleRow.sendType !== 'unlimited') {
 			await userService.incrUserSendCount(c, receiveEmail.length, userId);
 		}
 

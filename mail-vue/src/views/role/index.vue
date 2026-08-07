@@ -116,11 +116,13 @@
             <div>
               <span>{{ node.label }}</span>
               <span class="send-num" v-if="data.permKey === 'email:send'" @click.stop>
-                <el-input-number v-if="form.sendType === 'day' || form.sendType === 'count'" v-model="form.sendCount" controls-position="right" :min="0" :max="99999" size="small"
+                <el-input-number v-if="form.sendType === 'day' || form.sendType === 'count'" v-model="form.sendCount" controls-position="right" :min="1" :max="99999" size="small"
                                  :placeholder="$t('total')">
                 </el-input-number>
                   <el-select v-model="form.sendType" placeholder="Select" size="small"
-                             :style="`width: ${ locale === 'zh' ? 65 : 85 }px;margin-left: 5px;`">
+                             :style="`width: ${ locale === 'zh' ? 80 : 95 }px;margin-left: 5px;`"
+                             @change="onSendTypeChange">
+                    <el-option :label="$t('unlimited')" value="unlimited"/>
                     <el-option :label="$t('total')" value="count"/>
                     <el-option :label="$t('daily')" value="day"/>
                     <el-option :label="$t('internal')" value="internal"/>
@@ -182,7 +184,7 @@ const form = reactive({
   name: null,
   description: null,
   banEmail: [],
-  sendType: 'count',
+  sendType: 'unlimited',
   sendCount: 0,
   accountCount: 0,
   sort: 0,
@@ -297,6 +299,7 @@ function setRole() {
   }
 
   const params = {...form, roleId: chooseRole.roleId}
+  normalizeSendLimit(params)
   const checkedId = tree.value.getCheckedKeys()
   const halfId = tree.value.getHalfCheckedKeys()
   params.permIds = [...checkedId, ...halfId]
@@ -322,16 +325,30 @@ function setRole() {
   })
 }
 
+function normalizeSendLimit(params) {
+  if (params.sendType === 'unlimited' || params.sendType === 'internal' || params.sendType === 'ban') {
+    params.sendCount = 0
+  }
+}
+
 function resetForm() {
   form.name = null
   form.description = null
   form.sort = 0
-  form.sendType = 'count'
+  form.sendType = 'unlimited'
   form.sendCount = 0
   form.accountCount = 0
   form.banEmail = []
   form.availDomain = []
   tree.value.setCheckedKeys([])
+}
+
+function onSendTypeChange(type) {
+  if (type === 'unlimited' || type === 'internal' || type === 'ban') {
+    form.sendCount = 0
+  } else if (!form.sendCount) {
+    form.sendCount = 1
+  }
 }
 
 function openRoleSet(role) {
@@ -342,8 +359,14 @@ function openRoleSet(role) {
   form.sort = role.sort
   form.name = role.name
   form.description = role.description
-  form.sendType = role.sendType
-  form.sendCount = role.sendCount
+  // 次数为 0 的「每天/次数」视为无限制
+  if (!role.sendCount && (role.sendType === 'day' || role.sendType === 'count' || !role.sendType)) {
+    form.sendType = 'unlimited'
+    form.sendCount = 0
+  } else {
+    form.sendType = role.sendType || 'unlimited'
+    form.sendCount = role.sendCount
+  }
   form.accountCount = role.accountCount
   form.banEmail = role.banEmail
   form.availDomain = role.availDomain
@@ -361,6 +384,7 @@ function openAddRole() {
 
 function addRole() {
   const params = {...form}
+  normalizeSendLimit(params)
   const checkedId = tree.value.getCheckedKeys()
   const halfId = tree.value.getHalfCheckedKeys()
   params.permIds = [...checkedId, ...halfId]

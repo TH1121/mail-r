@@ -758,10 +758,11 @@ function submit() {
 
 
 function formatSendType(user) {
-  if (user.sendAction.sendType === 'day') return t('daily')
-  if (user.sendAction.sendType === 'count') return t('total')
   if (user.sendAction.sendType === 'ban') return t('sendBanned')
   if (user.sendAction.sendType === 'internal') return t('sendInternal')
+  if (user.sendAction.sendType === 'unlimited' || !user.sendAction.sendCount) return t('unlimited')
+  if (user.sendAction.sendType === 'day') return t('daily')
+  if (user.sendAction.sendType === 'count') return t('total')
 }
 
 function formatSendCount(user) {

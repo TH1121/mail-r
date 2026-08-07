@@ -117,7 +117,7 @@ const sendType = computed(() => {
     return t('sendInternal')
   }
 
-  if (!userStore.user.role.sendCount) {
+  if (userStore.user.role.sendType === 'unlimited' || !userStore.user.role.sendCount) {
     return t('unlimited')
   }
 
@@ -145,7 +145,7 @@ const sendCount = computed(() => {
     return null
   }
 
-  if (!userStore.user.role.sendCount) {
+  if (userStore.user.role.sendType === 'unlimited' || !userStore.user.role.sendCount) {
     return null
   }
 
