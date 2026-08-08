@@ -160,7 +160,17 @@
                        :showUserInfo="showUserInfo"
                        :type="type"/>
       <div class="empty" v-if="noLoading && emailList.length === 0 && !loading">
-        <el-empty :image-size="isMobile ? 120 : null" :description="$t('noMessagesFound')"/>
+        <el-empty :image-size="isMobile ? 120 : null" :description="$t('noMessagesFound')">
+          <el-button
+              v-if="props.type === 'email' && hasPerm('email:send')"
+              type="primary"
+              class="empty-compose-btn"
+              @click="openCompose"
+          >
+            <Icon icon="material-symbols:edit-outline-sharp" width="16" height="16"/>
+            {{ $t('composeMail') }}
+          </el-button>
+        </el-empty>
       </div>
     </div>
     <el-dropdown
@@ -268,6 +278,7 @@ import {useI18n} from "vue-i18n";
 import {EmailUnreadEnum} from "@/enums/email-enum.js";
 import { UseVirtualList } from '@vueuse/components'
 import { useScroll } from '@vueuse/core'
+import {hasPerm} from "@/perm/perm.js"
 
 const props = defineProps({
   getEmailList: Function,
@@ -514,6 +525,10 @@ function openReply(email) {
 
 function openForward(email) {
   uiStore.writerRef.openForward(email)
+}
+
+function openCompose() {
+  uiStore.writerRef?.open?.()
 }
 
 function visibleChange(e) {
@@ -1106,6 +1121,14 @@ function loadData() {
     align-items: center;
     height: 100%;
     width: 100%;
+
+    .empty-compose-btn {
+      margin-top: 4px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
   }
 
   .noLoading {

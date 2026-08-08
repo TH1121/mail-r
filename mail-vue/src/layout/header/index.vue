@@ -6,7 +6,8 @@
     </div>
     <div v-perm="'email:send'" class="writer-box" @click="openSend">
       <div class="writer">
-        <Icon icon="material-symbols:edit-outline-sharp" width="22" height="22"/>
+        <Icon icon="material-symbols:edit-outline-sharp" width="18" height="18"/>
+        <span class="writer-text">{{ $t('composeMail') }}</span>
       </div>
     </div>
     <div class="toolbar">
@@ -360,7 +361,8 @@ function formatName(email) {
   font-size: 12px;
   display: grid;
   height: 100%;
-  gap: 10px;
+  gap: 12px;
+  align-items: center;
   grid-template-columns: auto auto 1fr;
 }
 
@@ -373,24 +375,41 @@ function formatName(email) {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 5px;
+  margin-left: 8px;
 
   .writer {
-    width: 34px;
+    min-width: 34px;
     height: 34px;
-    border-radius: 50%;
+    padding: 0 14px;
+    border-radius: 10px;
     color: #ffffff;
-    background: linear-gradient(135deg, #1890ff, #3a80dd);
-    transition: all 0.3s ease;
-    display: flex;
+    background: linear-gradient(135deg, #3b9eff 0%, #1677ff 100%);
+    box-shadow: 0 4px 12px rgba(22, 119, 255, 0.25);
+    transition: all 0.2s ease;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
 
     .writer-text {
-      margin-left: 15px;
-      font-size: 14px;
-      font-weight: bold;;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
     }
+
+    @media (max-width: 767px) {
+      padding: 0;
+      width: 34px;
+      border-radius: 50%;
+
+      .writer-text {
+        display: none;
+      }
+    }
+  }
+
+  .writer:hover {
+    filter: brightness(1.05);
   }
 }
 
@@ -402,12 +421,13 @@ function formatName(email) {
 }
 
 .breadcrumb-item {
-  font-weight: bold;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 15px;
   color: var(--el-text-color-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  margin-left: 4px;
 }
 
 .toolbar {
@@ -420,9 +440,9 @@ function formatName(email) {
 
   .icon-item {
     align-self: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;

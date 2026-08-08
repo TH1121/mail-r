@@ -1,8 +1,15 @@
 <template>
   <div class="account-box">
     <div class="head-opt">
-      <Icon v-perm="'account:add'" class="icon add" icon="ion:add-outline" width="23" height="23" @click="add"/>
-      <Icon class="icon refresh" icon="ion:reload" width="18" height="18" @click="refresh"/>
+      <el-button v-perm="'account:add'" type="primary" class="add-account-btn" @click="add">
+        <Icon icon="ion:add-outline" width="16" height="16"/>
+        <span>{{ $t('addAccount') }}</span>
+      </el-button>
+      <el-tooltip :content="$t('refreshList')" placement="top">
+        <span class="icon-wrap">
+          <Icon class="icon refresh" icon="ion:reload" width="18" height="18" @click="refresh"/>
+        </span>
+      </el-tooltip>
     </div>
     <el-scrollbar class="scrollbar" ref="scrollbarRef">
       <div v-infinite-scroll="getAccountList" :infinite-scroll-distance="600" :infinite-scroll-immediate="false">
@@ -526,34 +533,43 @@ path[fill="#ffdda1"] {
   .head-opt {
     display: flex;
     align-items: center;
-    height: 38px;
+    height: 42px;
     box-shadow: var(--header-actions-border);
     padding-left: 10px;
     padding-right: 10px;
+    gap: 8px;
+
+    .add-account-btn {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+    }
 
     .icon {
       cursor: pointer;
     }
 
+    .icon-wrap {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
     .refresh {
-      margin-left: 10px;
-    }
-
-    .add {
       margin-left: 2px;
-    }
-
-    .head-opt:not(.add) .refresh {
-      margin-left: 5px;
     }
   }
 
   .scrollbar {
     width: 100%;
-    height: calc(100% - 38px);
+    height: calc(100% - 42px);
     overflow: auto;
     @media (max-width: 767px) {
-      height: calc(100% - 98px);
+      height: calc(100% - 102px);
     }
 
     .empty {
