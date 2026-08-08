@@ -61,6 +61,13 @@ export const emailConst = {
 	}
 }
 
+export const scheduleEmailConst = {
+	status: {
+		PENDING: 0,
+		FAILED: 1
+	}
+}
+
 export const attConst = {
 	status: {
 		NORMAL: 0,

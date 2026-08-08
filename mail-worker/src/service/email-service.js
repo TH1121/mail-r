@@ -137,11 +137,121 @@ const emailService = {
 	async delete(c, params, userId) {
 		const { emailIds } = params;
 		const emailIdList = emailIds.split(',').map(Number);
-		await orm(c).update(email).set({ isDel: isDel.DELETE }).where(
+		const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+		await orm(c).update(email).set({ isDel: isDel.DELETE, deleteTime: now }).where(
 			and(
 				eq(email.userId, userId),
 				inArray(email.emailId, emailIdList)))
 			.run();
+	},
+
+	async restore(c, params, userId) {
+		const { emailIds } = params;
+		const emailIdList = String(emailIds).split(',').map(Number).filter(Boolean);
+		if (!emailIdList.length) return;
+		await orm(c).update(email).set({ isDel: isDel.NORMAL, deleteTime: null }).where(
+			and(
+				eq(email.userId, userId),
+				eq(email.isDel, isDel.DELETE),
+				inArray(email.emailId, emailIdList)
+			)
+		).run();
+	},
+
+	async trashList(c, params, userId) {
+		let { emailId, size, timeSort, accountId, allReceive } = params;
+
+		size = Number(size);
+		emailId = Number(emailId);
+		timeSort = Number(timeSort);
+		accountId = Number(accountId);
+		allReceive = Number(allReceive);
+
+		if (size > 50) {
+			size = 50;
+		}
+
+		if (!emailId) {
+			emailId = timeSort ? 0 : 9999999999;
+		}
+
+		if (isNaN(allReceive)) {
+			allReceive = 1;
+		}
+
+		const query = orm(c)
+			.select({
+				...email,
+				starId: star.starId
+			})
+			.from(email)
+			.leftJoin(
+				star,
+				and(
+					eq(star.emailId, email.emailId),
+					eq(star.userId, userId)
+				)
+			)
+			.where(
+				and(
+					allReceive || !accountId ? eq(1, 1) : eq(email.accountId, accountId),
+					eq(email.userId, userId),
+					timeSort ? gt(email.emailId, emailId) : lt(email.emailId, emailId),
+					eq(email.isDel, isDel.DELETE),
+					ne(email.status, emailConst.status.SAVING)
+				)
+			);
+
+		if (timeSort) {
+			query.orderBy(asc(email.emailId));
+		} else {
+			query.orderBy(desc(email.emailId));
+		}
+
+		const list = await query.limit(size).all();
+		const totalRow = await orm(c).select({ total: count() }).from(email).where(
+			and(
+				eq(email.userId, userId),
+				eq(email.isDel, isDel.DELETE),
+				ne(email.status, emailConst.status.SAVING)
+			)
+		).get();
+
+		await this.emailAddAtt(c, list);
+		await this.enrichSendDisplayNames(c, userId, list, null);
+
+		return { list, total: totalRow?.total || 0, latestEmail: {} };
+	},
+
+	async physicsDeleteByUser(c, params, userId) {
+		let { emailIds } = params;
+		const emailIdList = String(emailIds).split(',').map(Number).filter(Boolean);
+		if (!emailIdList.length) return;
+
+		const rows = await orm(c).select({ emailId: email.emailId }).from(email).where(
+			and(
+				eq(email.userId, userId),
+				eq(email.isDel, isDel.DELETE),
+				inArray(email.emailId, emailIdList)
+			)
+		).all();
+
+		const ids = rows.map(r => r.emailId);
+		if (!ids.length) return;
+		await this.physicsDelete(c, { emailIds: ids.join(',') });
+	},
+
+	async purgeExpiredDeleted(c) {
+		const expireAt = dayjs().subtract(30, 'day').format('YYYY-MM-DD HH:mm:ss');
+		const rows = await orm(c).select({ emailId: email.emailId }).from(email).where(
+			and(
+				eq(email.isDel, isDel.DELETE),
+				lte(email.deleteTime, expireAt)
+			)
+		).limit(200).all();
+
+		if (!rows.length) return;
+		await this.physicsDelete(c, { emailIds: rows.map(r => r.emailId).join(',') });
 	},
 
 	receive(c, params, cidAttList, r2domain) {
@@ -266,7 +376,13 @@ const emailService = {
 		if (!allInternal) {
 
 			// 外发植入打开追踪像素（不依赖 Resend Open tracking / Cloudflare 无打开事件）
-			const sendHtml = this.withOpenPixel(html, text, new URL(c.req.url).origin, trackId);
+			let origin = '';
+			try {
+				origin = c.req?.url ? new URL(c.req.url).origin : '';
+			} catch (_) {
+				origin = '';
+			}
+			const sendHtml = this.withOpenPixel(html, text, origin, trackId);
 
 			if (useCloudflareEmail) {
 				sendResult = await this.sendByCloudflareEmail(c, {
@@ -825,6 +941,10 @@ const emailService = {
 				.replace(/</g, '&lt;')
 				.replace(/>/g, '&gt;');
 			body = `<div style="font-family:sans-serif;white-space:pre-wrap;word-break:break-word;">${safeText}</div>`;
+		}
+
+		if (!origin || !trackId) {
+			return body;
 		}
 
 		const pixelUrl = `${origin.replace(/\/$/, '')}/open/${trackId}.gif`;

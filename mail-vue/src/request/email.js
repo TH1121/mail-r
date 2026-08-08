@@ -24,3 +24,27 @@ export function emailSend(form,progress) {
         noMsg: true
     })
 }
+
+export function emailTrashList(accountId, allReceive, emailId, timeSort, size) {
+    return http.get('/email/trash', {params: {accountId, allReceive, emailId, timeSort, size}})
+}
+
+export function emailRestore(emailIds) {
+    return http.put('/email/restore', {emailIds})
+}
+
+export function emailPhysicsDelete(emailIds) {
+    return http.delete('/email/physicsDelete?emailIds=' + emailIds)
+}
+
+export function scheduleCreate(form) {
+    return http.post('/schedule/create', form)
+}
+
+export function scheduleList(scheduleId, timeSort, size) {
+    return http.get('/schedule/list', {params: {scheduleId, timeSort, size}})
+}
+
+export function scheduleCancel(scheduleIds) {
+    return http.delete('/schedule/cancel?scheduleIds=' + scheduleIds)
+}

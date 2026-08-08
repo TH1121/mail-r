@@ -30,8 +30,52 @@ const dbInit = {
 		await this.v2_9DB(c);
 		await this.v3_0DB(c);
 		await this.v3_1DB(c);
+		await this.v3_2DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_2DB(c) {
+		try {
+			await c.env.db.prepare(`ALTER TABLE email ADD COLUMN delete_time TEXT;`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+				UPDATE email SET delete_time = create_time
+				WHERE is_del = 1 AND (delete_time IS NULL OR delete_time = '')
+			`).run();
+		} catch (e) {
+			console.warn(`回填删除时间失败：${e.message}`);
+		}
+
+		try {
+			await c.env.db.prepare(`
+			  CREATE TABLE IF NOT EXISTS schedule_email (
+				schedule_id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL,
+				account_id INTEGER NOT NULL,
+				name TEXT NOT NULL DEFAULT '',
+				send_email TEXT NOT NULL DEFAULT '',
+				receive_email TEXT NOT NULL DEFAULT '[]',
+				subject TEXT NOT NULL DEFAULT '',
+				content TEXT NOT NULL DEFAULT '',
+				text TEXT NOT NULL DEFAULT '',
+				send_type TEXT NOT NULL DEFAULT '',
+				reply_email_id INTEGER NOT NULL DEFAULT 0,
+				attachments TEXT NOT NULL DEFAULT '[]',
+				send_at TEXT NOT NULL,
+				create_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+				status INTEGER NOT NULL DEFAULT 0,
+				message TEXT NOT NULL DEFAULT '',
+				is_del INTEGER NOT NULL DEFAULT 0
+			  )
+			`).run();
+		} catch (e) {
+			console.warn(`创建定时邮件表失败：${e.message}`);
+		}
 	},
 
 	async v3_1DB(c) {

@@ -25,6 +25,11 @@
           <Icon icon="cil:send" width="20" height="20" />
           <span class="menu-name">{{$t('sent')}}</span>
         </el-menu-item>
+        <el-menu-item @click="router.push({name: 'schedule'})" index="schedule" v-perm="'email:send'"
+                      :class="route.meta.name === 'schedule' ? 'choose-item' : ''">
+          <Icon icon="mdi:clock-outline" width="20" height="20" />
+          <span class="menu-name">{{$t('scheduled')}}</span>
+        </el-menu-item>
         <el-menu-item @click="router.push({name: 'draft'})" index="draft" v-perm="'email:send'"
                       :class="route.meta.name === 'draft' ? 'choose-item' : ''">
           <Icon icon="ep:document" width="19" height="19" />
@@ -34,6 +39,11 @@
                       :class="route.meta.name === 'star' ? 'choose-item' : ''">
           <Icon icon="solar:star-line-duotone" width="20" height="20" />
           <span class="menu-name">{{$t('starred')}}</span>
+        </el-menu-item>
+        <el-menu-item @click="router.push({name: 'trash'})" index="trash"
+                      :class="route.meta.name === 'trash' ? 'choose-item' : ''">
+          <Icon icon="mdi:delete-outline" width="20" height="20" />
+          <span class="menu-name">{{$t('trash')}}</span>
         </el-menu-item>
         <el-menu-item @click="router.push({name: 'setting'})" index="setting"
                       :class="route.meta.name === 'setting' ? 'choose-item' : ''">

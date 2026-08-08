@@ -30,9 +30,9 @@
             >
               <el-option
                   v-for="item in selectRecipientList"
-                  :key="item"
-                  :label="item"
-                  :value="item"
+                  :key="item.email"
+                  :label="item.display"
+                  :value="item.email"
                   style="color: #999896;"
               />
             </el-select>
@@ -61,7 +61,17 @@
                     width="22" height="22"/>
             </div>
           </div>
-          <div>
+          <div class="send-actions">
+            <el-date-picker
+                v-model="scheduleAt"
+                type="datetime"
+                :placeholder="$t('scheduleTime')"
+                format="YYYY-MM-DD HH:mm"
+                value-format="YYYY-MM-DDTHH:mm:ssZ"
+                :disabled-date="disabledScheduleDate"
+                style="width: 200px; margin-right: 10px"
+            />
+            <el-button @click="scheduleSend" :loading="scheduleLoading">{{ $t('scheduleSend') }}</el-button>
             <el-button type="primary" @click="sendEmail" v-if="form.sendType === 'reply'">{{ $t('reply') }}</el-button>
             <el-button type="primary" @click="sendEmail" v-else-if="form.sendType === 'forward'">{{ $t('forward') }}</el-button>
             <el-button type="primary" @click="sendEmail" v-else>{{ $t('send') }}</el-button>
@@ -72,9 +82,9 @@
     <el-dialog top="10vh" v-model="showContacts" @closed="clearSelectContact" :title="t('recentContacts')">
       <el-table ref="contactsTabRef" row-key="email" :data="contacts" style="height: 445px">
         <el-table-column type="selection" width="32" />
-        <el-table-column property="email" :label="t('emailAccount')" >
+        <el-table-column property="email" :label="t('contact')">
           <template #default="props">
-            <div class="email-row">{{ props.row.email }}</div>
+            <div class="email-row">{{ props.row.display }}</div>
           </template>
         </el-table-column>
         <el-table-column width="55" label="" >
@@ -97,7 +107,7 @@ import tinyEditor from '@/components/tiny-editor/index.vue'
 import {h, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, computed} from "vue";
 import {Icon} from "@iconify/vue";
 import {useUserStore} from "@/store/user.js";
-import {emailSend} from "@/request/email.js";
+import {emailSend, scheduleCreate} from "@/request/email.js";
 import {isEmail} from "@/utils/verify-utils.js";
 import {useAccountStore} from "@/store/account.js";
 import {useEmailStore} from "@/store/email.js";
@@ -137,6 +147,8 @@ let sending = false
 const defValue = ref('')
 const contactsTabRef = ref({})
 const showContacts = ref(false)
+const scheduleAt = ref('')
+const scheduleLoading = ref(false)
 const mySelect = ref()
 let selectStatus = false
 const backReply = reactive({
@@ -160,14 +172,82 @@ const form = reactive({
 })
 
 const selectRecipientList = ref([])
+const pendingContactNames = reactive({})
 
-const contacts = computed(() => writerStore.sendRecipientRecord.map(item => ({email: item})))
+function normalizeContact(item) {
+  if (typeof item === 'string') {
+    return { email: item, name: '' }
+  }
+  return {
+    email: item?.email || '',
+    name: item?.name || ''
+  }
+}
+
+function isUsefulDisplayName(name, emailAddr) {
+  const n = (name || '').trim()
+  if (!n) return false
+  const addr = (emailAddr || '').trim().toLowerCase()
+  if (addr && n.toLowerCase() === addr) return false
+  if (n.includes('@') && n.includes('.')) return false
+  return true
+}
+
+function formatContactDisplay(contact) {
+  const email = contact?.email || ''
+  const name = contact?.name || ''
+  if (isUsefulDisplayName(name, email)) {
+    return `${name.trim()}（${email}）`
+  }
+  return email
+}
+
+function getRecordEmails() {
+  return writerStore.sendRecipientRecord.map(item => normalizeContact(item).email)
+}
+
+function getContactNameMap() {
+  const map = new Map()
+  for (const item of writerStore.sendRecipientRecord) {
+    const c = normalizeContact(item)
+    if (c.email && isUsefulDisplayName(c.name, c.email)) {
+      map.set(c.email.toLowerCase(), c.name.trim())
+    }
+  }
+  Object.keys(pendingContactNames).forEach(key => {
+    const name = pendingContactNames[key]
+    if (isUsefulDisplayName(name, key)) {
+      map.set(key.toLowerCase(), name.trim())
+    }
+  })
+  return map
+}
+
+function rememberContactName(email, name) {
+  if (!email || !isUsefulDisplayName(name, email)) return
+  pendingContactNames[email.toLowerCase()] = name.trim()
+  const list = writerStore.sendRecipientRecord.map(normalizeContact)
+  const idx = list.findIndex(c => c.email.toLowerCase() === email.toLowerCase())
+  if (idx >= 0) {
+    list[idx].name = name.trim()
+    writerStore.sendRecipientRecord = list
+  }
+}
+
+const contacts = computed(() => writerStore.sendRecipientRecord.map(item => {
+  const contact = normalizeContact(item)
+  return {
+    ...contact,
+    display: formatContactDisplay(contact)
+  }
+}))
 
 function openContacts() {
   showContacts.value = true
   nextTick(() => {
+    const recordEmails = getRecordEmails()
     form.receiveEmail.forEach(item => {
-      if (writerStore.sendRecipientRecord.includes(item)) {
+      if (recordEmails.includes(item)) {
         contactsTabRef.value.toggleRowSelection({email: item});
       }
     })
@@ -182,7 +262,9 @@ function deleteContact() {
   }).then(() => {
     const contactList = contactsTabRef.value.getSelectionRows().map(item => item.email);
     form.receiveEmail = form.receiveEmail.filter(item => !contactList.includes(item));
-    writerStore.sendRecipientRecord = writerStore.sendRecipientRecord.filter(item => !contactList.includes(item));
+    writerStore.sendRecipientRecord = writerStore.sendRecipientRecord
+        .map(normalizeContact)
+        .filter(item => !contactList.includes(item.email));
   })
 }
 
@@ -196,7 +278,7 @@ function chooseContact() {
   })
 
   form.receiveEmail = form.receiveEmail.filter(item => {
-    return contactList.includes(item) || !writerStore.sendRecipientRecord.includes(item);
+    return contactList.includes(item) || !getRecordEmails().includes(item);
   });
 
   showContacts.value = false
@@ -219,8 +301,19 @@ const openSelect = () => {
 }
 
 function inputChange(value) {
-
-  selectRecipientList.value = writerStore.sendRecipientRecord.filter(item => value && !form.receiveEmail.includes(item) && item.startsWith(value)).slice(0, 10);
+  const keyword = (value || '').trim().toLowerCase()
+  selectRecipientList.value = writerStore.sendRecipientRecord
+      .map(normalizeContact)
+      .filter(item => {
+        if (!keyword || form.receiveEmail.includes(item.email)) return false
+        return item.email.toLowerCase().startsWith(keyword)
+            || (item.name || '').toLowerCase().includes(keyword)
+      })
+      .slice(0, 10)
+      .map(item => ({
+        ...item,
+        display: formatContactDisplay(item)
+      }))
 
   if (!selectStatus && selectRecipientList.value.length > 0) {
     openSelect()
@@ -286,6 +379,83 @@ function chooseFile() {
     }
 
   }
+}
+
+async function scheduleSend() {
+  if (form.receiveEmail.length === 0) {
+    ElMessage({
+      message: t('emptyRecipientMsg'),
+      type: 'error',
+      plain: true,
+    })
+    return
+  }
+
+  if (!form.subject) {
+    ElMessage({
+      message: t('emptySubjectMsg'),
+      type: 'error',
+      plain: true,
+    })
+    return
+  }
+
+  if (!form.content) {
+    form.content = editor.value.getContent();
+  }
+
+  if (!form.content) {
+    ElMessage({
+      message: t('emptyContentMsg'),
+      type: 'error',
+      plain: true,
+    })
+    return
+  }
+
+  if (!scheduleAt.value) {
+    ElMessage({
+      message: t('emptyScheduleTimeMsg'),
+      type: 'error',
+      plain: true,
+    })
+    return
+  }
+
+  if (dayjs(scheduleAt.value).isBefore(dayjs().add(1, 'minute'))) {
+    ElMessage({
+      message: t('invalidScheduleTimeMsg'),
+      type: 'error',
+      plain: true,
+    })
+    return
+  }
+
+  scheduleLoading.value = true
+  scheduleCreate({
+    ...toRaw(form),
+    sendAt: scheduleAt.value
+  }).then(() => {
+    ElMessage({
+      message: t('scheduleSuccessMsg'),
+      type: 'success',
+      plain: true,
+    })
+    addRecipientRecord()
+    if (form.draftId) {
+      db.value.draft.delete(form.draftId)
+      draftStore.refreshList = !draftStore.refreshList
+    }
+    show.value = false
+    resetForm()
+  }).finally(() => {
+    scheduleLoading.value = false
+  })
+}
+
+function disabledScheduleDate(date) {
+  const today = dayjs().startOf('day')
+  return dayjs(date).isBefore(today)
 }
 
 async function sendEmail() {
@@ -400,12 +570,18 @@ async function sendEmail() {
 }
 
 function addRecipientRecord() {
-  writerStore.sendRecipientRecord = writerStore.sendRecipientRecord.filter(
-      email => !form.receiveEmail.includes(email)
-  );
+  const nameMap = getContactNameMap()
+  const emails = [...form.receiveEmail]
 
-  writerStore.sendRecipientRecord.unshift(...form.receiveEmail);
-  writerStore.sendRecipientRecord = writerStore.sendRecipientRecord.slice(0, 500);
+  writerStore.sendRecipientRecord = writerStore.sendRecipientRecord
+      .map(normalizeContact)
+      .filter(item => !emails.includes(item.email))
+
+  writerStore.sendRecipientRecord.unshift(...emails.map(email => ({
+    email,
+    name: nameMap.get(email.toLowerCase()) || ''
+  })))
+  writerStore.sendRecipientRecord = writerStore.sendRecipientRecord.slice(0, 500)
 }
 
 function resetForm() {
@@ -417,6 +593,7 @@ function resetForm() {
   form.sendType = ''
   form.emailId = 0
   form.draftId = null
+  scheduleAt.value = ''
   backReply.content = ''
   backReply.subject = ''
   backReply.receiveEmail = []
@@ -466,6 +643,7 @@ function openReply(email) {
   email.subject = email.subject || ''
 
   form.receiveEmail.push(email.sendEmail)
+  rememberContactName(email.sendEmail, email.name)
   form.subject = (
       email.subject.startsWith('Re:') ||
       email.subject.startsWith('Re：') ||
@@ -700,6 +878,14 @@ function close() {
       .button-item {
         display: grid;
         grid-template-columns: auto auto 1fr auto;
+
+        .send-actions {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          gap: 8px;
+        }
 
         .att-add {
           cursor: pointer;

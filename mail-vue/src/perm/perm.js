@@ -57,6 +57,16 @@ const routers = {
                 name: 'draft',
                 menu: true
             }
+        },
+        {
+            path: '/scheduled',
+            name: 'schedule',
+            component: () => import('@/views/schedule/index.vue'),
+            meta: {
+                title: 'scheduled',
+                name: 'schedule',
+                menu: true
+            }
         }
     ],
     'user:query': [{
