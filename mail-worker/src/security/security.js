@@ -18,7 +18,6 @@ const exclude = [
 	'/init',
 	'/public/genToken',
 	'/telegram',
-	'/test',
 	'/oauth'
 ];
 
