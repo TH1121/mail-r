@@ -168,6 +168,7 @@ const en = {
     rules: 'Rules',
     turnstileSetting: 'Turnstile',
     signUpVerification: 'Sign Up Verification',
+    loginVerification: 'Login Verification',
     addEmailVerification: 'Add Email Verification',
     changeTitle: 'Change Title',
     addResendTokenDesc: 'Input to add; leave empty to delete',

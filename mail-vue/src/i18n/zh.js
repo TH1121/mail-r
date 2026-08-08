@@ -168,6 +168,7 @@ const zh = {
     rules: '规则转发',
     turnstileSetting: 'Turnstile 人机验证',
     signUpVerification: '注册验证',
+    loginVerification: '登录验证',
     addEmailVerification: '添加验证',
     changeTitle: '修改标题',
     addResendTokenDesc: '输入内容添加，不填则删除',

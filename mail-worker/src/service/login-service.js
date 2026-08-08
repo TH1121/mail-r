@@ -201,10 +201,27 @@ const loginService = {
 
 	async login(c, params, noVerifyPwd = false) {
 
-		const { email, password } = params;
+		const { email, password, token } = params;
 
 		if ((!email || !password) && !noVerifyPwd) {
 			throw new BizError(t('emailAndPwdEmpty'));
+		}
+
+		const { loginVerify, loginVerifyCount } = await settingService.query(c);
+		let loginVerifyOpen = false;
+
+		if (!noVerifyPwd) {
+			if (loginVerify === settingConst.loginVerify.OPEN) {
+				loginVerifyOpen = true;
+				await turnstileService.verify(c, token);
+			}
+
+			if (loginVerify === settingConst.loginVerify.COUNT) {
+				loginVerifyOpen = await verifyRecordService.isOpenLoginVerify(c, loginVerifyCount);
+				if (loginVerifyOpen) {
+					await turnstileService.verify(c, token);
+				}
+			}
 		}
 
 		const userRow = await userService.selectByEmailIncludeDel(c, email);
@@ -253,7 +270,13 @@ const loginService = {
 		await userService.updateUserInfo(c, userRow.userId);
 
 		await c.env.kv.put(KvConst.AUTH_INFO + userRow.userId, JSON.stringify(authInfo), { expirationTtl: constant.TOKEN_EXPIRE });
-		return jwt;
+
+		if (!noVerifyPwd && loginVerify === settingConst.loginVerify.COUNT && !loginVerifyOpen) {
+			const row = await verifyRecordService.increaseLoginCount(c);
+			return { token: jwt, loginVerifyOpen: row.count >= loginVerifyCount };
+		}
+
+		return { token: jwt, loginVerifyOpen };
 	},
 
 	async logout(c, userId) {

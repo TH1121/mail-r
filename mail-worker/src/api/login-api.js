@@ -4,8 +4,8 @@ import result from '../model/result';
 import userContext from '../security/user-context';
 
 app.post('/login', async (c) => {
-	const token = await loginService.login(c, await c.req.json());
-	return c.json(result.ok({ token: token }));
+	const data = await loginService.login(c, await c.req.json());
+	return c.json(result.ok(data));
 });
 
 app.post('/register', async (c) => {

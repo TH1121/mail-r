@@ -302,6 +302,25 @@
                 </div>
               </div>
               <div class="setting-item">
+                <div><span>{{ $t('loginVerification') }}</span></div>
+                <div>
+                  <el-button class="opt-button" size="small" type="primary" @click="openLoginVerifyCount">
+                    <Icon icon="fluent:settings-48-regular" width="18" height="18"/>
+                  </el-button>
+                  <el-select
+                      @change="change"
+                      :style="`width: ${ locale === 'en' ? 100 : 80 }px;`"
+                      v-model="setting.loginVerify"
+                      placeholder="Select"
+                      class="bot-verify-select"
+                  >
+                    <el-option key="1" :value="0" :label="$t('enable')"/>
+                    <el-option key="1" :value="1" :label="$t('disable')"/>
+                    <el-option key="1" :value="2" :label="$t('rulesVerify')"/>
+                  </el-select>
+                </div>
+              </div>
+              <div class="setting-item">
                 <div><span>{{ $t('addEmailVerification') }}</span></div>
                 <div>
                   <el-button class="opt-button" size="small" type="primary" @click="openAddVerifyCount">
@@ -599,6 +618,13 @@
           <el-button type="primary" :loading="settingLoading" @click="saveRegVerifyCount">{{ $t('save') }}</el-button>
         </form>
       </el-dialog>
+      <el-dialog v-model="loginVerifyCountShow" :title="$t('rulesVerifyTitle',{count: loginVerifyCount})"
+                 @closed="loginVerifyCount = setting.loginVerifyCount">
+        <form>
+          <el-input-number type="text" v-model="loginVerifyCount" :min="1"/>
+          <el-button type="primary" :loading="settingLoading" @click="saveLoginVerifyCount">{{ $t('save') }}</el-button>
+        </form>
+      </el-dialog>
       <el-dialog v-model="addVerifyCountShow" :title="$t('rulesVerifyTitle',{count: addVerifyCount})"
                  @closed="addVerifyCount = setting.addVerifyCount">
         <form>
@@ -815,10 +841,12 @@ let backgroundFile = {}
 const showSetBackground = ref(false)
 let regVerifyCount = ref(1)
 let addVerifyCount = ref(1)
+let loginVerifyCount = ref(1)
 let backup = '{}'
 const addS3Show = ref(false)
 const addVerifyCountShow = ref(false)
 const regVerifyCountShow = ref(false)
+const loginVerifyCountShow = ref(false)
 const resendTokenForm = reactive({
   domain: '',
   token: '',
@@ -905,6 +933,7 @@ function getSettings() {
     r2DomainInput.value = setting.value.r2Domain
     addVerifyCount.value = setting.value.addVerifyCount
     regVerifyCount.value = setting.value.regVerifyCount
+    loginVerifyCount.value = setting.value.loginVerifyCount ?? 1
     resetNoticeForm()
     resetAddS3Form()
     resetEmailPrefix()
@@ -929,6 +958,11 @@ function openAddVerifyCount() {
 function openRegVerifyCount() {
   if (settingLoading.value) return
   regVerifyCountShow.value = true
+}
+
+function openLoginVerifyCount() {
+  if (settingLoading.value) return
+  loginVerifyCountShow.value = true
 }
 
 function resetAddS3Form() {
@@ -974,6 +1008,13 @@ function saveRegVerifyCount() {
     regVerifyCount.value = 1
   }
   editSetting({regVerifyCount: regVerifyCount.value})
+}
+
+function saveLoginVerifyCount() {
+  if (!loginVerifyCount.value) {
+    loginVerifyCount.value = 1
+  }
+  editSetting({loginVerifyCount: loginVerifyCount.value})
 }
 
 const compareByLengthAndUpperCase = (a, b, key) => {
@@ -1429,6 +1470,7 @@ function editSetting(settingForm, refreshStatus = true) {
     forwardRulesShow.value = false
     addVerifyCountShow.value = false
     regVerifyCountShow.value = false
+    loginVerifyCountShow.value = false
     noticePopupShow.value = false
     addS3Show.value = false
     emailPrefixShow.value = false

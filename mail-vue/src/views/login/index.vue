@@ -41,6 +41,16 @@
           </el-input>
           <el-input v-model="form.password" :placeholder="$t('password')" type="password" autocomplete="off">
           </el-input>
+          <div v-show="loginVerifyShow"
+               class="login-turnstile"
+               :data-sitekey="settingStore.settings.siteKey"
+               data-callback="onTurnstileSuccess"
+               data-error-callback="onTurnstileError"
+               data-after-interactive-callback="loadAfter"
+               data-before-interactive-callback="loadBefore"
+          >
+            <span style="font-size: 12px;color: #F56C6C" v-if="botJsError">{{ $t('verifyModuleFailed') }}</span>
+          </div>
           <el-button class="btn" type="primary" @click="submit" :loading="loginLoading"
           >{{ $t('loginBtn') }}
           </el-button>
@@ -195,8 +205,10 @@ const domainList = settingStore.domainList;
 const registerLoading = ref(false)
 suffix.value = domainList[0]
 const verifyShow = ref(false)
+const loginVerifyShow = ref(false)
 let verifyToken = ''
 let turnstileId = null
+let loginTurnstileId = null
 let botJsError = ref(false)
 let verifyErrorCount = 0
 
@@ -212,10 +224,20 @@ window.onTurnstileError = (e) => {
   console.warn('人机验加载失败', e)
   setTimeout(() => {
     nextTick(() => {
-      if (!turnstileId) {
-        turnstileId = window.turnstile.render('.register-turnstile')
+      const isLogin = show.value === 'login'
+      const selector = isLogin ? '.login-turnstile' : '.register-turnstile'
+      if (isLogin) {
+        if (!loginTurnstileId) {
+          loginTurnstileId = window.turnstile.render(selector)
+        } else {
+          window.turnstile.reset(loginTurnstileId);
+        }
       } else {
-        window.turnstile.reset(turnstileId);
+        if (!turnstileId) {
+          turnstileId = window.turnstile.render(selector)
+        } else {
+          window.turnstile.reset(turnstileId);
+        }
       }
     })
   }, 1500)
@@ -389,9 +411,55 @@ const submit = () => {
     return
   }
 
+  const needLoginVerify = settingStore.settings.loginVerify === 0
+      || (settingStore.settings.loginVerify === 2 && settingStore.settings.loginVerifyOpen)
+
+  if (!verifyToken && needLoginVerify) {
+    if (!loginVerifyShow.value) {
+      loginVerifyShow.value = true
+      nextTick(() => {
+        if (!loginTurnstileId) {
+          try {
+            loginTurnstileId = window.turnstile.render('.login-turnstile')
+          } catch (e) {
+            botJsError.value = true
+            console.log('人机验证js加载失败')
+          }
+        } else {
+          window.turnstile.reset('.login-turnstile')
+        }
+      })
+    } else if (!botJsError.value) {
+      ElMessage({
+        message: t('botVerifyMsg'),
+        type: "error",
+        plain: true
+      })
+    }
+    return;
+  }
+
   loginLoading.value = true
-  login(email, form.password).then(async data => {
+  login(email, form.password, verifyToken).then(async data => {
+    verifyToken = ''
+    loginVerifyShow.value = false
+    if (data.loginVerifyOpen !== undefined) {
+      settingStore.settings.loginVerifyOpen = data.loginVerifyOpen
+    }
     await saveToken(data.token)
+  }).catch(res => {
+    if (res.code === 400) {
+      verifyToken = ''
+      settingStore.settings.loginVerifyOpen = true
+      if (loginTurnstileId) {
+        window.turnstile.reset(loginTurnstileId)
+      } else {
+        nextTick(() => {
+          loginTurnstileId = window.turnstile.render('.login-turnstile')
+        })
+      }
+      loginVerifyShow.value = true
+    }
   }).finally(() => {
     loginLoading.value = false
   })
@@ -712,7 +780,8 @@ function submitRegister() {
   margin: 0;
 }
 
-.register-turnstile {
+.register-turnstile,
+.login-turnstile {
   margin-bottom: 18px;
 }
 

@@ -51,6 +51,22 @@ const verifyRecordService = {
 
 	},
 
+	async isOpenLoginVerify(c, loginVerifyCount) {
+
+		const ip = reqUtils.getIp(c)
+
+		const row = await orm(c).select().from(verifyRecord).where(and(eq(verifyRecord.ip, ip),eq(verifyRecord.type,verifyRecordType.LOGIN))).get();
+
+		if (row) {
+			if (row.count >= loginVerifyCount){
+				return true
+			}
+		}
+
+		return false
+
+	},
+
 	async increaseRegCount(c) {
 
 		const ip = reqUtils.getIp(c)
@@ -82,6 +98,23 @@ const verifyRecordService = {
 			}).where(and(eq(verifyRecord.ip, ip),eq(verifyRecord.type,verifyRecordType.ADD))).returning().get();
 		} else {
 			return orm(c).insert(verifyRecord).values({ip, type: verifyRecordType.ADD}).returning().get();
+		}
+	},
+
+	async increaseLoginCount(c) {
+
+		const ip = reqUtils.getIp(c)
+
+		const row = await orm(c).select().from(verifyRecord).where(and(eq(verifyRecord.ip, ip),eq(verifyRecord.type,verifyRecordType.LOGIN))).get();
+		const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+
+		if (row) {
+			return orm(c).update(verifyRecord).set({
+				count: sql`${verifyRecord.count}
+		+ 1`, updateTime: now
+			}).where(and(eq(verifyRecord.ip, ip),eq(verifyRecord.type,verifyRecordType.LOGIN))).returning().get();
+		} else {
+			return orm(c).insert(verifyRecord).values({ip, type: verifyRecordType.LOGIN}).returning().get();
 		}
 	}
 

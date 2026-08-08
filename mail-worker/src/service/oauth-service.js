@@ -25,7 +25,7 @@ const oauthService = {
 		userRow = await userService.selectByEmail(c, email);
 
 		orm(c).update(oauth).set({ userId: userRow.userId }).where(eq(oauth.oauthUserId, oauthUserId)).run();
-		const jwtToken = await loginService.login(c, { email, password: null }, true);
+		const { token: jwtToken } = await loginService.login(c, { email, password: null }, true);
 
 		return { userInfo: oauthRow, token: jwtToken}
 	},
@@ -82,7 +82,7 @@ const oauthService = {
 		}
 
 		const JwtToken = await loginService.login(c, { email: userRow.email, password: null }, true);
-		return { userInfo: oauthRow, token: JwtToken }
+		return { userInfo: oauthRow, token: JwtToken.token }
 	},
 
 	async saveUser(c, userInfo) {
