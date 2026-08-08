@@ -111,14 +111,15 @@
         >{{ $t('add') }}
         </el-button>
       </div>
-      <div
-          class="add-email-turnstile"
-          :class="verifyShow ? 'turnstile-show' : 'turnstile-hide'"
-          :data-sitekey="settingStore.settings.siteKey"
-          data-callback="onTurnstileSuccess"
-          data-error-callback="onTurnstileError"
-      >
-        <span style="font-size: 12px;color: #F56C6C" v-if="botJsError">{{ $t('verifyModuleFailed') }}</span>
+      <div class="turnstile-wrap">
+        <div
+            class="add-email-turnstile"
+            :class="verifyShow ? 'turnstile-show' : 'turnstile-hide'"
+        ></div>
+        <div class="turnstile-error" v-if="botJsError">
+          <span>{{ $t('verifyModuleFailed') }}</span>
+          <el-button link type="primary" @click="showAddTurnstile(true)">{{ $t('retry') }}</el-button>
+        </div>
       </div>
     </el-dialog>
     <el-dialog v-model="setNameShow" :title="$t('changeUserName')">
@@ -145,6 +146,7 @@ import {
 } from "@/request/account.js";
 import {sleep} from "@/utils/time-utils.js"
 import {isEmail} from "@/utils/verify-utils.js";
+import {mountTurnstile} from "@/utils/turnstile.js";
 import {useSettingStore} from "@/store/setting.js";
 import {useAccountStore} from "@/store/account.js";
 import {useEmailStore} from "@/store/email.js";
@@ -176,6 +178,7 @@ let turnstileId = null
 const botJsError = ref(false)
 let verifyToken = ''
 let verifyErrorCount = 0
+let turnstileMounting = false
 let first = true
 const addForm = reactive({
   email: '',
@@ -207,26 +210,49 @@ const openSelect = () => {
   mySelect.value.toggleMenu()
 }
 
-window.onTurnstileError = (e) => {
-  if (verifyErrorCount >= 4) {
+function onTurnstileSuccess(token) {
+  verifyToken = token;
+  botJsError.value = false;
+  verifyErrorCount = 0;
+}
+
+function onTurnstileError(e) {
+  if (verifyErrorCount >= 5) {
+    botJsError.value = true
     return
   }
   verifyErrorCount++
   console.warn('人机验加载失败', e)
   setTimeout(() => {
-    nextTick(() => {
-      if (!turnstileId) {
-        turnstileId = window.turnstile.render('.add-email-turnstile')
-      } else {
-        window.turnstile.reset(turnstileId);
-      }
-    })
-  }, 1500)
-};
+    showAddTurnstile(true)
+  }, 1200)
+}
 
-window.onTurnstileSuccess = (token) => {
-  verifyToken = token;
-};
+function onTurnstileExpired() {
+  verifyToken = ''
+}
+
+async function showAddTurnstile(force = false) {
+  if (turnstileMounting) return
+  verifyShow.value = true
+  botJsError.value = false
+  turnstileMounting = true
+  try {
+    await nextTick()
+    turnstileId = await mountTurnstile('.add-email-turnstile', {
+      sitekey: settingStore.settings.siteKey,
+      widgetId: force ? null : turnstileId,
+      callback: onTurnstileSuccess,
+      'error-callback': onTurnstileError,
+      'expired-callback': onTurnstileExpired,
+    })
+  } catch (e) {
+    botJsError.value = true
+    console.warn('人机验证js加载失败', e)
+  } finally {
+    turnstileMounting = false
+  }
+}
 
 function getSkeletonRows() {
   if (accounts.length > 20) return skeletonRows = 20
@@ -461,22 +487,14 @@ function submit() {
     return
   }
 
+  submitWithVerify()
+}
+
+async function submitWithVerify() {
   if (!verifyToken && (settingStore.settings.addEmailVerify === 0 || (settingStore.settings.addEmailVerify === 2 && settingStore.settings.addVerifyOpen))) {
-    if (!verifyShow.value) {
-      verifyShow.value = true
-      nextTick(() => {
-        if (!turnstileId) {
-          try {
-            turnstileId = window.turnstile.render('.add-email-turnstile')
-          } catch (e) {
-            botJsError.value = true
-            console.log('人机验证js加载失败')
-          }
-        } else {
-          window.turnstile.reset('.add-email-turnstile')
-        }
-      })
-    } else if (!botJsError.value) {
+    if (!verifyShow.value || botJsError.value || !turnstileId) {
+      await showAddTurnstile(botJsError.value || !turnstileId)
+    } else {
       ElMessage({
         message: t('botVerifyMsg'),
         type: "error",
@@ -504,14 +522,7 @@ function submit() {
   }).catch(res => {
     if (res.code === 400) {
       verifyToken = ''
-      if (turnstileId) {
-        window.turnstile.reset(turnstileId)
-      } else {
-        nextTick(() => {
-          turnstileId = window.turnstile.render('.add-email-turnstile')
-        })
-      }
-      verifyShow.value = true
+      showAddTurnstile(true)
     }
     addLoading.value = false
   })
@@ -678,6 +689,19 @@ path[fill="#ffdda1"] {
 
 .add-email-turnstile {
   margin-top: 15px;
+  min-height: 65px;
+}
+
+.turnstile-wrap {
+  margin-top: 8px;
+}
+
+.turnstile-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #F56C6C;
 }
 
 .turnstile-show {
